@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planning</title>
+    <style>
+        :root { --bg-body: #f4f7f6; --bg-card: #ffffff; --text-main: #2d3436; --primary: #6c5ce7; --border: #edf2f7; --success: #00b894; }
+        [data-theme="dark"] { --bg-body: #0f172a; --bg-card: #1e293b; --text-main: #f1f5f9; --border: #334155; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-body); color: var(--text-main); transition: 0.4s; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .app-card { background: var(--bg-card); width: 100%; max-width: 500px; padding: 25px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        nav { display: flex; gap: 10px; margin-bottom: 20px; }
+        nav a { flex: 1; text-decoration: none; padding: 10px; text-align: center; border-radius: 12px; font-weight: bold; font-size: 14px; }
+        .nav-active { background: var(--primary); color: white; }
+        .nav-inactive { background: var(--bg-body); color: var(--text-main); border: 1px solid var(--border); }
+        .wish-summary { background: var(--primary); color: white; padding: 15px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+        .wish-item { background: var(--bg-body); padding: 15px; border-radius: 18px; margin-bottom: 15px; border: 1px solid var(--border); }
+        .progress-container { background: #dfe6e9; height: 10px; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+        .progress-bar { background: var(--primary); height: 100%; transition: 0.5s; }
+        input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-main); box-sizing: border-box; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; }
+        .modal-content { background: var(--bg-card); padding: 25px; border-radius: 24px; width: 85%; max-width: 320px; }
+    </style>
+</head>
+<body>
+    <div class="app-card">
+        <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <div>
+                <h2 style="margin:0">Wishlist</h2>
+                <small id="user-display" style="opacity:0.7"></small>
+            </div>
+            <button onclick="toggleTheme()" id="theme-btn" style="background:none; border:none; font-size:1.2rem; cursor:pointer;">☀️</button>
+        </header>
+
+        <nav>
+            <a href="jadwal.html" class="nav-inactive">📅 JADWAL</a>
+            <a href="wishlist.html" class="nav-active">🎁 WISHLIST</a>
+        </nav>
+
+        <div class="wish-summary">
+            <div>Terkumpul:<br><strong id="total-saved">Rp 0</strong></div>
+            <div style="text-align: right;">Target:<br><strong id="total-target">Rp 0</strong></div>
+        </div>
+
+        <input type="text" id="w-name" placeholder="Nama barang...">
+        <input type="number" id="w-price" placeholder="Harga (Rp)...">
+        <button onclick="addWish()" style="width:100%; background:var(--primary); color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; cursor:pointer; margin-bottom:20px;">+ Tambah Target</button>
+
+        <div id="wish-list"></div>
+    </div>
+
+    <div class="modal-overlay" id="money-modal">
+        <div class="modal-content">
+            <h3 id="modal-title">💰 Tabung</h3>
+            <input type="number" id="modal-amount" placeholder="Rp 0">
+            <div style="display:flex; gap:10px;">
+                <button onclick="closeModal()" style="flex:1; padding:10px; border-radius:10px; border:none; background:#eee;">Batal</button>
+                <button id="confirm-btn" style="flex:1; padding:10px; border-radius:10px; border:none; background:var(--primary); color:white;">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const currentUser = localStorage.getItem('currentUser') || 'guest';
+        const USER_WISH_KEY = `wishlist_${currentUser}`;
+        let currentWishId = null, currentType = 'in';
+
+        function format(n) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n); }
+
+        function render() {
+            const container = document.getElementById('wish-list');
+            container.innerHTML = "";
+            const wishes = JSON.parse(localStorage.getItem(USER_WISH_KEY) || '[]');
+            let s=0, t=0;
+            wishes.forEach(w => {
+                const p = Math.min(Math.round((w.saved/w.target)*100), 100);
+                s += w.saved; t += w.target;
+                const div = document.createElement('div');
+                div.className = 'wish-item';
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between">
+                        <strong>${w.text}</strong> 
+                        <span onclick="del(${w.id})" style="cursor:pointer">✕</span>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" style="width:${p}%; background:${p>=100?'var(--success)':'var(--primary)'}"></div>
+                    </div>
+                    <div style="font-size:11px; display:flex; justify-content:space-between">
+                        <span>${format(w.saved)}</span><span>${p}% dari ${format(w.target)}</span>
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:10px;">
+                        <button onclick="openModal(${w.id}, 'in')" style="flex:1; background:var(--success); color:white; border:none; padding:5px; border-radius:5px;">Tabung</button>
+                        <button onclick="openModal(${w.id}, 'out')" style="flex:1; background:#ff7675; color:white; border:none; padding:5px; border-radius:5px;">Ambil</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+            document.getElementById('total-saved').innerText = format(s);
+            document.getElementById('total-target').innerText = format(t);
+        }
+
+        window.addWish = () => {
+            const n = document.getElementById('w-name'), p = document.getElementById('w-price');
+            if(!n.value || !p.value) return;
+            const wishes = JSON.parse(localStorage.getItem(USER_WISH_KEY) || '[]');
+            wishes.push({ id: Date.now(), text: n.value, target: parseInt(p.value), saved: 0 });
+            localStorage.setItem(USER_WISH_KEY, JSON.stringify(wishes));
+            n.value = ""; p.value = ""; render();
+        };
+
+        window.openModal = (id, type) => {
+            currentWishId = id; currentType = type;
+            document.getElementById('modal-title').innerText = type === 'in' ? '💰 Tabung' : '💸 Ambil';
+            document.getElementById('money-modal').style.display = 'flex';
+        };
+
+        window.closeModal = () => document.getElementById('money-modal').style.display = 'none';
+
+        document.getElementById('confirm-btn').onclick = () => {
+            const amt = parseInt(document.getElementById('modal-amount').value);
+            if(!amt) return;
+            let wishes = JSON.parse(localStorage.getItem(USER_WISH_KEY));
+            wishes = wishes.map(w => {
+                if(w.id === currentWishId) w.saved = Math.max(0, currentType==='in' ? w.saved + amt : w.saved - amt);
+                return w;
+            });
+            localStorage.setItem(USER_WISH_KEY, JSON.stringify(wishes));
+            render(); closeModal();
+        };
+
+        // Fungsi untuk menampilkan modal konfirmasi kustom
+        function showConfirm(title, message, onConfirm) {
+            const modal = document.getElementById('confirm-modal');
+            const titleEl = document.getElementById('confirm-title');
+            const msgEl = document.getElementById('confirm-msg');
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+
+            titleEl.innerText = title;
+            msgEl.innerText = message;
+            modal.style.display = 'flex';
+
+            // Reset event listener agar tidak menumpuk
+            confirmBtn.onclick = () => {
+                onConfirm();
+                modal.style.display = 'none';
+            };
+
+            cancelBtn.onclick = () => {
+                modal.style.display = 'none';
+            };
+        }
+
+       
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            document.getElementById('theme-btn').innerHTML = newTheme === 'dark' ? '☀️' : '🌙';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('user-display').innerText = `Halo, ${currentUser}! 👋`;
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            document.getElementById('theme-btn').innerHTML = savedTheme === 'dark' ? '☀️' : '🌙';
+            render();
+        });
+    </script>
+</body>
+</html>
